@@ -1,0 +1,238 @@
+---
+title: "pangoLEARN vs. Usher Classifications using pangolin"
+date: "Updated:  `r format(Sys.time(), '%B %d, %Y')`<div style=\"height: 40px;\"></div>"
+output:
+  html_document:
+    toc: true
+    toc_depth: 5
+---
+
+```{r echo = F, warning = F, message = F}
+library(dplyr)
+library(DT)
+
+plearn <- list.files("/NetDrive/Projects/COVID-19/Other/master_fasta/", pattern = "*plearn*")
+lineages_plearn <- read.csv(paste("/NetDrive/Projects/COVID-19/Other/master_fasta/", plearn,
+                                  sep=""), header = TRUE, na.strings=c("","NA"), stringsAsFactors=FALSE)
+
+usher <- list.files("/NetDrive/Projects/COVID-19/Other/master_fasta/", pattern = "*usher*")
+lineages_usher <- read.csv(paste("/NetDrive/Projects/COVID-19/Other/master_fasta/", usher,
+                                  sep=""), header = TRUE, na.strings=c("","NA"), stringsAsFactors=FALSE)
+
+lineages_plearn_sub <- lineages_plearn %>% select(taxon, lineage) %>% rename(plearn_lin = lineage)
+
+lineages_usher_sub <- lineages_usher %>% select(taxon, lineage) %>% rename(usher_lin = lineage)
+
+merged <- merge(lineages_plearn_sub, lineages_usher_sub, by = "taxon")
+```
+
+## Overview
+
+The comparisons below highlights the assignment differences and similarities between using:
+\
+\
+1. a combination of pangoLEARN and scorpio
+\
+2. a combination of scorpio and Usher
+\
+\
+for lineage assignments using pangolin. These differences are shown across identical versions of pangolin and pango designations. 
+\
+
+The motivation to compare the two methods of assignment was suggested by the Rambaut group as method for validating potential false positive lineage calls with pangoLEARN. Specifically, any lineage assignments for Delta sub-lineages from pangoLEARN were suggested to be validated by Usher in an effort to reduce the false positive rate on AY lineage calling with pangoLEARN. This was first reported for pangoLEARN 2021-08-09 and attempts were made to correct these assignments in the current version: `r format (unique(lineages_plearn$pangoLEARN_version)[1])`. 
+\
+\
+Full version details of all modules used in Pangolin can be found below:
+
+\
+\
+
+
+## Version information
+
+
+pangolin: **`r format (unique(lineages_plearn$pangolin_version)[1])`**
+
+pangoLEARN: **`r format (unique(lineages_plearn$pangoLEARN_version)[1])`**
+
+pango designation: **`r format (unique(lineages_plearn$pango_version)[1])`**
+
+Usher: **`r format (unique(lineages_usher$version)[2])`**
+
+\
+\
+
+## AY & AZ lineages reported by pangoLEARN and Usher
+
+### pangoLEARN
+
+```{r, echo = F, message = F, warning = F}
+
+datatable(lineages_plearn_sub %>% group_by(plearn_lin) %>% summarise(Counts = n()) %>%
+  subset(grepl("AY|AZ", plearn_lin)) %>% filter(Counts > 0) %>% arrange(-Counts) %>%
+  rename(Lineage = plearn_lin),
+           rownames = FALSE,
+           escape=FALSE,
+          class="compact",
+          width = 800)
+
+```
+### Usher
+
+```{r, echo = F, message = F, warning = F}
+
+datatable(lineages_usher_sub %>% group_by(usher_lin) %>% summarise(Counts = n()) %>%
+  subset(grepl("AY|AZ", usher_lin)) %>% filter(Counts > 0) %>% arrange(-Counts) %>%
+  rename(Lineage = usher_lin),
+           rownames = FALSE,
+           escape=FALSE,
+          class="compact",
+          width = 800)
+
+```
+
+## Assignment differences, pangoLEARN and Usher, AY & AZ lineages
+\
+A summary of the tallies of different lineage assignments obtained through either pangoLEARN or Usher can be seen below for any AY (Delta sub-lineage) and AZ (B.1.1.318 sub-lineage)
+
+\
+\
+
+```{r, echo = F, message = F, warning = F}
+differences <- subset(merged, plearn_lin != usher_lin)
+difference_combos <- as.data.frame(table(differences$plearn_lin, differences$usher_lin)) %>% filter(Freq > 0)
+colnames(difference_combos) <- c("pangoLEARN lineage", "Usher lineage", "Frequency")
+difference_combos <- difference_combos[with(difference_combos, grepl("AY|AZ", paste(`pangoLEARN lineage`, `Usher lineage`))),]
+
+all_plearn <- lineages_plearn_sub %>% group_by(plearn_lin) %>% summarise(counts = n())
+
+difference_combos <- merge(difference_combos, all_plearn, by.x = "pangoLEARN lineage",
+                           by.y = "plearn_lin") %>% 
+  mutate(`percent of all Possible*` = round(100*(Frequency/counts), digits = 1)) %>% select(-counts) %>%
+  arrange(-Frequency)
+
+datatable(difference_combos,
+           rownames = FALSE,
+           escape=FALSE,
+          class="compact",
+          width = 800)
+
+```
+
+<br>
+<br>
+
+
+## Identical assignments, pangoLEARN and Usher, AY & AZ lineages
+\
+A summary of the tallies of the same lineage assignment obtained through either pangoLEARN or Usher can be seen below for any AY (Delta sub-lineage) and AZ (B.1.1.318 sub-lineage)
+\
+\
+```{r, echo = F, message = F, warning = F}
+same_ay_az <- subset(merged, plearn_lin == usher_lin & grepl("AY|AZ", plearn_lin))
+same_ay_az <- as.data.frame(table(same_ay_az$plearn_lin, same_ay_az$usher_lin)) %>% filter(Freq > 0) %>% arrange(-Freq)
+colnames(same_ay_az) <- c("pangoLEARN lineage", "Usher lineage", "Frequency")
+
+same_ay_az <- merge(same_ay_az, all_plearn, by.x = "pangoLEARN lineage",
+                           by.y = "plearn_lin") %>% 
+  mutate(`percent of all Possible*` = round(100*(Frequency/counts), digits = 1)) %>% select(-counts) %>%
+  arrange(-Frequency)
+
+datatable(same_ay_az,
+           rownames = FALSE,
+           escape=FALSE,
+          class="compact",
+          width = 800)
+
+```
+
+<br>
+
+* Note: percent of all Possible is measured by the total number of sequences using pangoLEARN that have the particular lineage assignment. For example, a percentage of 100% as shown in the differences chart would indicate that 100% of sequences assigned to that particular lineage in pangoLEARN were not supported by Usher, and vice versa if displayed in the identical chart. 
+\
+\
+
+## Defining mutation presence for AY lineages
+
+```{r, echo = F, message = F, warning = F}
+
+find_nextclade <- list.files("/NetDrive/Projects/COVID-19/Other/master_fasta/", pattern = "nextclade_all*")
+nextclade_all <- read.csv(paste("/NetDrive/Projects/COVID-19/Other/master_fasta/", find_nextclade, sep=""), header = TRUE, na.strings=c("","NA"), stringsAsFactors=FALSE,
+                          sep="\t")
+
+```
+
+
+
+```{r, echo = F, message = F, warning = F}
+
+ay_mutations <- read.csv("ay_defining_mutations.tsv", sep = "\t", header = TRUE, na.strings=c("","NA"), stringsAsFactors=FALSE)
+
+ay_vec <- ay_mutations$lineage
+names(ay_vec) <- ay_mutations$defining_mutation
+
+ay_tracking_frame <- data.frame(lineage = as.character(), num_plearn = as.numeric(),
+                                perc_plearn_with_mut = as.numeric(),
+                                perc_plearn_without_mut = as.numeric(),
+                                num_usher = as.numeric(),
+                                perc_usher_with_mut = as.numeric(),
+                                perc_usher_without_mut = as.numeric(),
+                                flag = as.character())
+
+for (elem in ay_vec) {
+  with_mut_defining <- subset(nextclade_all, grepl(names(which(ay_vec == elem)), substitutions))
+  plearn_with_defining <- nrow(subset(lineages_plearn, taxon %in% with_mut_defining$seqName & lineage == elem))
+  plearn_without_defining <- nrow(subset(lineages_plearn, ! taxon %in% with_mut_defining$seqName & lineage == elem))
+
+usher_with_defining <- nrow(subset(lineages_usher, taxon %in% with_mut_defining$seqName & lineage == elem))
+usher_without_defining <- nrow(subset(lineages_usher, ! taxon %in% with_mut_defining$seqName & lineage == elem))
+
+perc_plearn_with_mut <- round(100*(plearn_with_defining/nrow(subset(lineages_plearn, lineage                      == elem))), digits = 1)
+
+perc_plearn_without_mut <- round(100*(plearn_without_defining/nrow(subset(lineages_plearn, lineage == elem))), digits = 1)
+
+perc_usher_with_mut <- round(100*(usher_with_defining/nrow(subset(lineages_usher, lineage                      == elem))), digits = 1)
+
+perc_usher_without_mut <- round(100*(usher_without_defining/nrow(subset(lineages_usher, lineage                      == elem))), digits = 1)
+
+
+
+to_add <- data.frame(lineage = elem,
+                     num_plearn = nrow(subset(lineages_plearn, lineage == elem)),
+                     perc_plearn_with_mut = perc_plearn_with_mut,
+                     perc_plearn_without_mut = perc_plearn_without_mut,
+                     num_usher = nrow(subset(lineages_usher, lineage == elem)),
+                     perc_usher_with_mut = perc_usher_with_mut,
+                     perc_usher_without_mut = perc_usher_without_mut)
+
+if (nrow(subset(lineages_plearn, lineage == elem)) > 0 &
+    nrow(subset(lineages_usher, lineage == elem)) > 0 ) {
+  
+  if (as.numeric(perc_plearn_without_mut) >= 10) {
+  flag_plearn <- "plearn discordance over 10%"
+} else {
+  flag_plearn <- ""
+}
+
+if (perc_usher_without_mut >= 10) {
+  flag_usher <- "usher discordance over 10%"
+} else {
+  flag_usher <- ""
+}
+  to_add$flag <- as.character(paste(flag_plearn, flag_usher, sep="\n"))
+  ay_tracking_frame <- rbind(ay_tracking_frame, to_add)
+    }
+
+}
+
+
+datatable(ay_tracking_frame,
+           rownames = FALSE,
+           escape=FALSE,
+          class="compact",
+          width = 800)
+
+```
+
+
+
