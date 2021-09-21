@@ -10,6 +10,7 @@ output:
 ```{r echo = F, warning = F, message = F}
 library(dplyr)
 library(DT)
+library(stringr)
 
 plearn <- list.files("/NetDrive/Projects/COVID-19/Other/master_fasta/", pattern = "*plearn*")
 lineages_plearn <- read.csv(paste("/NetDrive/Projects/COVID-19/Other/master_fasta/", plearn,
@@ -154,6 +155,14 @@ datatable(same_ay_az,
 
 ## Defining mutation presence for AY lineages
 
+\
+
+The table below highlights the patterns of concordance and discordance among AY lineages when detecting a particular defining mutation. For example, a lineage with a percentage of 100% with the defining mutation indicates that all of the sequences designated as the particular AY lineage were found to have the defining mutation corresponding to that specific AY number, likely indicating a true positive. Conversely, a percentage of sequences without the defining mutation indicates that the mutation was not seen, potentially indicating a false positive. The percentages and total counts and shown for both Usher and pangoLEARN. 
+
+If either of Usher or pangoLEARN outputs an AY lineage where more than 10% of the sequences are found to not have the defining mutation, they are flagged in the final column. 
+\
+\
+
 ```{r, echo = F, message = F, warning = F}
 
 find_nextclade <- list.files("/NetDrive/Projects/COVID-19/Other/master_fasta/", pattern = "nextclade_all*")
@@ -162,8 +171,6 @@ nextclade_all <- read.csv(paste("/NetDrive/Projects/COVID-19/Other/master_fasta/
 
 ```
 
-
-
 ```{r, echo = F, message = F, warning = F}
 
 ay_mutations <- read.csv("ay_defining_mutations.tsv", sep = "\t", header = TRUE, na.strings=c("","NA"), stringsAsFactors=FALSE)
@@ -171,7 +178,52 @@ ay_mutations <- read.csv("ay_defining_mutations.tsv", sep = "\t", header = TRUE,
 ay_vec <- ay_mutations$lineage
 names(ay_vec) <- ay_mutations$defining_mutation
 
+searches <- data.frame(lineage = as.character(),
+                       search_term = as.character(), stringsAsFactors = F)
+
+for (elem in ay_vec) {
+  # split the strings into the individual mutations 
+  string_split <- as.vector(str_split(names(which(ay_vec == elem)), ";", 5))
+  
+  if (length(string_split[[1]]) > 1) {
+    # if there is more than one defining mutation, find all pairwise combos and create grep string
+    # for each one
+    combinations <- combn(string_split[[1]], 2)
+    search <- vector()
+    for(i in 1:ncol(combinations)) {      
+    unlisted <- unlist(combinations[,i])
+    term <- paste(unlisted[1], ".*", unlisted[2], "|", unlisted[1], ".*", unlisted[2], sep="")
+    # append all the pairwise grep searches to a vector
+    search <- c(search, term)
+    }
+    
+    # collapse the grep searches if they are longer than one term
+    
+    term_merged <- paste(search, collapse = "|")
+
+    frame_multiple <- data.frame(lineage = elem,
+                                 search_term = term_merged)
+    
+    # add the searches to the data frame, either single of multiple mutations
+    searches <- rbind(searches, frame_multiple)
+  } else {
+    frame_single <- data.frame(lineage = elem,
+                               search_term = string_split[[1]])
+    
+    searches <- rbind(searches, frame_single)
+  }
+}
+  
+
+```
+
+
+```{r, echo = F, message = F, warning = F}
+
+# append total counts and individual module percentages to a frame to render
+# in table
 ay_tracking_frame <- data.frame(lineage = as.character(), num_plearn = as.numeric(),
+                                defining_mut = as.character(),
                                 perc_plearn_with_mut = as.numeric(),
                                 perc_plearn_without_mut = as.numeric(),
                                 num_usher = as.numeric(),
@@ -179,8 +231,11 @@ ay_tracking_frame <- data.frame(lineage = as.character(), num_plearn = as.numeri
                                 perc_usher_without_mut = as.numeric(),
                                 flag = as.character())
 
-for (elem in ay_vec) {
-  with_mut_defining <- subset(nextclade_all, grepl(names(which(ay_vec == elem)), substitutions))
+search_vec <- as.vector(searches$lineage)
+names(search_vec) <- as.vector(searches$search_term)
+
+for (elem in search_vec) {
+  with_mut_defining <- subset(nextclade_all, grepl(names(which(search_vec == elem)), substitutions))
   plearn_with_defining <- nrow(subset(lineages_plearn, taxon %in% with_mut_defining$seqName & lineage == elem))
   plearn_without_defining <- nrow(subset(lineages_plearn, ! taxon %in% with_mut_defining$seqName & lineage == elem))
 
@@ -196,8 +251,8 @@ perc_usher_with_mut <- round(100*(usher_with_defining/nrow(subset(lineages_usher
 perc_usher_without_mut <- round(100*(usher_without_defining/nrow(subset(lineages_usher, lineage                      == elem))), digits = 1)
 
 
-
 to_add <- data.frame(lineage = elem,
+                     defining_mut = names(which(ay_vec == elem)),
                      num_plearn = nrow(subset(lineages_plearn, lineage == elem)),
                      perc_plearn_with_mut = perc_plearn_with_mut,
                      perc_plearn_without_mut = perc_plearn_without_mut,
@@ -230,9 +285,15 @@ datatable(ay_tracking_frame,
            rownames = FALSE,
            escape=FALSE,
           class="compact",
-          width = 800)
+          width = 1000)
+
+# library(kableExtra)
+# 
+# kable(ay_tracking_frame, format = "html", table.attr = "style='width:30%;'") %>% 
+#   kableExtra::kable_styling()
 
 ```
+
 
 
 
